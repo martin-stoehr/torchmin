@@ -5,7 +5,7 @@ packages = find_packages(exclude=("tests", "tests.*"))
 
 # setup
 setup(
-    name='pytorch-minimize',
+    name='torchmin',
     description='Newton and Quasi-Newton optimization with PyTorch',
     url='https://pytorch-minimize.readthedocs.io',
     author='Reuben Feinman',
