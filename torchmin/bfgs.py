@@ -285,7 +285,7 @@ def _minimize_bfgs_core(
 
 
 def _minimize_bfgs(
-        fun, x0, lr=1., inv_hess=True, max_iter=None,
+        fun, x0, lr=1., inv_hess=False, max_iter=None,
         line_search='strong-wolfe', gtol=1e-5, xtol=1e-9,
         normp=float('inf'), callback=None, disp=0, return_all=False):
     """Minimize a multivariate function with BFGS

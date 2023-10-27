@@ -13,7 +13,7 @@ dot = lambda u,v: torch.dot(u.view(-1), v.view(-1))
 
 
 @torch.no_grad()
-def _minimize_cg(fun, x0, max_iter=None, gtol=1e-5, normp=float('inf'),
+def _minimize_cg(fun, x0, lr=1., max_iter=None, gtol=1e-5, normp=float('inf'),
                  callback=None, disp=0, return_all=False):
     """Minimize a scalar function of one or more variables using
     nonlinear conjugate gradient.
@@ -62,7 +62,7 @@ def _minimize_cg(fun, x0, max_iter=None, gtol=1e-5, normp=float('inf'),
         allvecs = [x]
     d = g.neg()
     grad_norm = g.norm(p=normp)
-    old_f = f + g.norm() / 2  # Sets the initial step guess to dx ~ 1
+    old_f = f + g.norm() / 2  # Sets the initial step guess to dx ~ lr
 
     for niter in range(1, max_iter + 1):
         # delta/gtd
@@ -70,7 +70,7 @@ def _minimize_cg(fun, x0, max_iter=None, gtol=1e-5, normp=float('inf'),
         gtd = dot(g, d)
 
         # compute initial step guess based on (f - old_f) / gtd
-        t0 = torch.clamp(2.02 * (f - old_f) / gtd, max=1.0)
+        t0 = lr * torch.clamp(2.02 * (f - old_f) / gtd, max=1.0)
         if t0 <= 0:
             warnflag = 4
             msg = 'Initial step guess is negative.'
@@ -83,7 +83,7 @@ def _minimize_cg(fun, x0, max_iter=None, gtol=1e-5, normp=float('inf'),
         def polak_ribiere_powell_step(t, g_next):
             y = g_next - g
             beta = torch.clamp(dot(y, g_next) / delta, min=0)
-            d_next = -g_next + d.mul(beta)
+            d_next = d.mul(beta) - g_next
             torch.norm(g_next, p=normp, out=grad_norm)
             return t, d_next
 

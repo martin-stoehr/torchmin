@@ -63,6 +63,11 @@ class Minimizer(Optimizer):
 
         self._nfev = [0]
         self._params = self.param_groups[0]['params']
+        self.minimize_kwargs = self.param_groups[0].copy()
+        # MS: copy param_group, remove 'params', and move 'lr' to options['lr']
+        _ = self.minimize_kwargs.pop('params')
+        self.minimize_kwargs['options'] = dict(self.minimize_kwargs.pop('options', {}),
+                                               **{'lr':self.minimize_kwargs.pop('lr', 1.)})
         self._numel_cache = None
         self._closure = None
         self._result = None
@@ -190,8 +195,11 @@ class Minimizer(Optimizer):
         x0 = self._gather_flat_param()
 
         # perform parameter update
-        kwargs = {k:v for k,v in self.param_groups[0].items() if k != 'params'}
-        self._result = minimize(self, x0, **kwargs)
+#        kwargs = {k:v for k,v in self.param_groups[0].items() if k != 'params'}
+#        self._result = minimize(self, x0, **kwargs)
+        # MS: update learning rate (scheduler operates on param_group['lr'])
+        self.minimize_kwargs['options']['lr'] = self.param_groups[0].get('lr', 1.)
+        self._result = minimize(self, x0, **self.minimize_kwargs)
 
         # set final value
         self._set_flat_param(self._result.x)
