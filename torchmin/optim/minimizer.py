@@ -1,6 +1,8 @@
 from functools import reduce
 import torch
 from torch.optim import Optimizer
+from torch.autograd import grad as adgrad
+from ..containers import sf_value, de_value
 
 
 class LinearOperator:
@@ -112,13 +114,15 @@ class Minimizer(Optimizer):
         assert offset == self._numel()
 
     def closure(self, x):
-        from torchmin.function import sf_value
-
         assert self._closure is not None
         self._set_flat_param(x)
         with torch.enable_grad():
             f = self._closure()
-            f.backward(create_graph=self._hessp or self._hess)
+            ## MS: avoid backward(create_graph=True). Causes memory leak
+            ## see https://github.com/pytorch/pytorch/issues/4661
+#            f.backward(create_graph=self._hessp or self._hess)
+            for p in self._params:
+                p.grad = adgrad(f, p, create_graph=self._hessp or self._hess)[0]
             grad = self._gather_flat_grad()
 
         grad_out = grad.detach().clone()
@@ -146,12 +150,10 @@ class Minimizer(Optimizer):
         return sf_value(f=f.detach(), grad=grad_out.detach(), hessp=hessp, hess=hess)
 
     def dir_evaluate(self, x, t, d):
-        from torchmin.function import de_value
-
         self._set_flat_param(x + d.mul(t))
-        with torch.enable_grad():
-            f = self._closure()
-        f.backward()
+        with torch.enable_grad(): f = self._closure()
+#        f.backward()
+        for p in self._params: p.grad = adgrad(f, p)[0]
         grad = self._gather_flat_grad()
         self._set_flat_param(x)
 
