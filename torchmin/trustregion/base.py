@@ -116,11 +116,12 @@ class BaseQuadraticSubproblem(ABC):
         to use full hessian matrix or hessian-vector products."""
         pass
 
-
+# use lr as scaling for steps or for trust radii?
+# scaling initial trust radius and steps for now. Seems to perform well
 def _minimize_trust_region(fun, x0, subproblem=None, initial_trust_radius=1.,
                            max_trust_radius=1000., eta=0.15, gtol=1e-4,
                            max_iter=None, disp=False, return_all=False,
-                           callback=None):
+                           callback=None, lr=1.):
     """
     Minimization of scalar function of one or more variables using a
     trust-region algorithm.
@@ -146,21 +147,21 @@ def _minimize_trust_region(fun, x0, subproblem=None, initial_trust_radius=1.,
     if subproblem is None:
         raise ValueError('A subproblem solving strategy is required for '
                          'trust-region methods')
-    if not (0 <= eta < 0.25):
-        raise Exception('invalid acceptance stringency')
+    if not (0 <= eta < 0.25): raise ValueError('invalid acceptance stringency')
     if max_trust_radius <= 0:
-        raise Exception('the max trust radius must be positive')
+        raise ValueError('the max trust radius must be positive')
     if initial_trust_radius <= 0:
         raise ValueError('the initial trust radius must be positive')
     if initial_trust_radius >= max_trust_radius:
         raise ValueError('the initial trust radius must be less than the '
                          'max trust radius')
-
+    
     # Input check/pre-process
     disp = int(disp)
-    if max_iter is None:
-        max_iter = x0.numel() * 200
-
+    if max_iter is None: max_iter = x0.numel() * 200
+    ## MS: scale initial trust radius for subproblem optimization
+    initial_trust_radius *= lr
+    
     # Construct scalar objective function
     hessp = subproblem.hess_prod
     sf = ScalarFunction(fun, x0.shape, hessp=hessp, hess=not hessp)
@@ -188,8 +189,10 @@ def _minimize_trust_region(fun, x0, subproblem=None, initial_trust_radius=1.,
         # This gives us the proposed step relative to the current position
         # and it tells us whether the proposed step
         # has reached the trust region boundary or not.
+        print("solve subproblem")
         try:
-            p, hits_boundary = m.solve(trust_radius)
+            p_, hits_boundary = m.solve(trust_radius)
+            p = p_ * lr
         except RuntimeError as exc:
             # TODO: catch general linalg error like np.linalg.linalg.LinAlgError
             if 'singular' in exc.args[0]:
@@ -197,7 +200,8 @@ def _minimize_trust_region(fun, x0, subproblem=None, initial_trust_radius=1.,
                 break
             else:
                 raise
-
+        print("subproblem solved. do update")
+        
         # calculate the predicted value at the proposed point
         predicted_value = m(p)
 
@@ -230,15 +234,12 @@ def _minimize_trust_region(fun, x0, subproblem=None, initial_trust_radius=1.,
             m = subproblem(x, closure)
 
         # append the best guess, call back, increment the iteration count
-        if return_all:
-            allvecs.append(x.clone())
-        if callback is not None:
-            callback(x.clone())
+        if return_all: allvecs.append(x.clone())
+        if callback is not None: callback(x.clone())
         k += 1
 
         # verbosity check
-        if disp > 1:
-            print('iter %d - fval: %0.4f' % (k, m.fun))
+        if disp > 1: print('iter %d - fval: %0.4f' % (k, m.fun))
 
         # check if the gradient is small enough to stop
         if m.jac_mag < gtol:
@@ -261,10 +262,6 @@ def _minimize_trust_region(fun, x0, subproblem=None, initial_trust_radius=1.,
                             success=(warnflag == 0), status=warnflag,
                             nfev=sf.nfev, nit=k, message=status_messages[warnflag])
 
-    if not subproblem.hess_prod:
-        result['hess'] = m.hess.view(2 * x0.shape)
-
-    if return_all:
-        result['allvecs'] = allvecs
-
+    if not subproblem.hess_prod: result['hess'] = m.hess.view(2 * x0.shape)
+    if return_all: result['allvecs'] = allvecs
     return result

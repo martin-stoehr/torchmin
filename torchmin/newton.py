@@ -35,7 +35,6 @@ def _cg_iters(grad, hess, max_iter, normp=1):
     g_norm = grad.norm(p=normp)
     tol = g_norm * g_norm.sqrt().clamp(0, 0.5)
     eps = torch.finfo(grad.dtype).eps
-    n_iter = 0  # TODO: remove?
     maxiter_reached = False
 
     # initialize state and iterate
@@ -44,8 +43,7 @@ def _cg_iters(grad, hess, max_iter, normp=1):
     p = grad.neg()
     rs = dot(r, r)
     for n_iter in range(max_iter):
-        if r.norm(p=normp) < tol:
-            break
+        if r.norm(p=normp) < tol: break
         Bp = hess.mv(p)
         curv = dot(p, Bp)
         curv_sum = curv.sum()
@@ -68,7 +66,6 @@ def _cg_iters(grad, hess, max_iter, normp=1):
     else:
         # curvature keeps increasing; bail
         maxiter_reached = True
-
     return x, n_iter, maxiter_reached
 
 
@@ -125,53 +122,42 @@ def _minimize_newton_cg(
     lr = float(lr)
     disp = int(disp)
     xtol = x0.numel() * xtol
-    if max_iter is None:
-        max_iter = x0.numel() * 200
-    if cg_max_iter is None:
-        cg_max_iter = x0.numel() * 20
+    if max_iter is None: max_iter = x0.numel() * 200
+    if cg_max_iter is None: cg_max_iter = x0.numel() * 20
 
     # construct scalar objective function
     sf = ScalarFunction(fun, x0.shape, hessp=True, twice_diffable=twice_diffable)
     closure = sf.closure
-    if line_search == 'strong-wolfe':
-        dir_evaluate = sf.dir_evaluate
+    if line_search == 'strong-wolfe': dir_evaluate = sf.dir_evaluate
 
     # initial settings
     x = x0.detach().clone(memory_format=torch.contiguous_format)
     f, g, hessp, _ = closure(x)
-    if disp > 1:
-        print('initial fval: %0.4f' % f)
-    if return_all:
-        allvecs = [x]
-    ncg = 0   # number of cg iterations
-    n_iter = 0
-
+    if disp > 1: print('initial fval: %0.4f' % f)
+    if return_all: allvecs = [x]
+    ncg = 0   # total number of cg iterations
     # begin optimization loop
     for n_iter in range(1, max_iter + 1):
-
         # ============================================================
         #  Compute a search direction pk by applying the CG method to
         #       H_f(xk) p = - J_f(xk) starting from 0.
         # ============================================================
-
-        # Compute search direction with conjugate gradient (GG)
         d, cg_iters, cg_fail = _cg_iters(g, hessp, cg_max_iter, normp)
         ncg += cg_iters
-
         if cg_fail:
             warnflag = 3
             msg = _status_message['cg_warn']
-            break
+            ## MS: If CG fails, still keep approximate direction for line search
+            ##     Convergence only holds *with* line search
+            if line_search == 'none': break
 
         # =====================================================
         #  Perform variable update (with optional line search)
         # =====================================================
-
         if line_search == 'none':
             update = d.mul(lr)
             x = x + update
         elif line_search == 'strong-wolfe':
-            # strong-wolfe line search
             _, _, t, ls_nevals = strong_wolfe(dir_evaluate, x, lr, d, f, g)
             update = d.mul(t)
             x = x + update
@@ -180,28 +166,21 @@ def _minimize_newton_cg(
 
         # re-evaluate function
         f, g, hessp, _ = closure(x)
-
-        if disp > 1:
-            print('iter %3d - fval: %0.4f' % (n_iter, f))
-        if callback is not None:
-            callback(x)
-        if return_all:
-            allvecs.append(x)
+        if disp > 1: print('iter %3d - fval: %0.4f' % (n_iter, f))
+        if callback is not None: callback(x)
+        if return_all: allvecs.append(x)
 
         # ==========================
         #  check for convergence
         # ==========================
-
         if update.norm(p=normp) <= xtol:
             warnflag = 0
             msg = _status_message['success']
             break
-
         if not f.isfinite():
             warnflag = 3
             msg = _status_message['nan']
             break
-
     else:
         # if we get to the end, the maximum num. iterations was reached
         warnflag = 1
@@ -216,8 +195,7 @@ def _minimize_newton_cg(
     result = OptimizeResult(fun=f, x=x.view_as(x0), grad=g.view_as(x0),
                             status=warnflag, success=(warnflag==0),
                             message=msg, nit=n_iter, nfev=sf.nfev, ncg=ncg)
-    if return_all:
-        result['allvecs'] = allvecs
+    if return_all: result['allvecs'] = allvecs
     return result
 
 
@@ -281,39 +259,28 @@ def _minimize_newton_exact(
     lr = float(lr)
     disp = int(disp)
     xtol = x0.numel() * xtol
-    if max_iter is None:
-        max_iter = x0.numel() * 200
+    if max_iter is None: max_iter = x0.numel() * 200
 
     # Construct scalar objective function
     sf = ScalarFunction(fun, x0.shape, hess=True)
     closure = sf.closure
-    if line_search == 'strong-wolfe':
-        dir_evaluate = sf.dir_evaluate
+    if line_search == 'strong-wolfe': dir_evaluate = sf.dir_evaluate
 
     # initial settings
     x = x0.detach().view(-1).clone(memory_format=torch.contiguous_format)
     f, g, _, hess = closure(x)
-    if tikhonov > 0:
-        hess.diagonal().add_(tikhonov)
-    if disp > 1:
-        print('initial fval: %0.4f' % f)
-    if return_all:
-        allvecs = [x]
+    if tikhonov > 0: hess.diagonal().add_(tikhonov)
+    if disp > 1: print('initial fval: %0.4f' % f)
+    if return_all: allvecs = [x]
     nfail = 0
-    n_iter = 0
-
     # begin optimization loop
     for n_iter in range(1, max_iter + 1):
-
         # ==================================================
         #  Compute a search direction d by solving
         #          H_f(x) d = - J_f(x)
         #  with the true Hessian and Cholesky factorization
         # ===================================================
-
-        # Compute search direction with Cholesky solve
         L, info = torch.linalg.cholesky_ex(hess)
-
         if info == 0:
             d = torch.cholesky_solve(g.neg().unsqueeze(1), L).squeeze(1)
         else:
@@ -328,8 +295,7 @@ def _minimize_newton_exact(
                     gnorm = g.norm(p=2)
                     scale = 1 / gnorm
                     gHg = g.dot(hess.mv(g))
-                    if gHg > 0:
-                        scale *= torch.clamp_(gnorm.pow(3) / gHg, max=1)
+                    if gHg > 0: scale *= torch.clamp_(gnorm.pow(3) / gHg, max=1)
                     d *= scale
             elif handle_npd == 'eig':
                 # this setting is experimental! use with caution
@@ -346,7 +312,6 @@ def _minimize_newton_exact(
         # =====================================================
         #  Perform variable update (with optional line search)
         # =====================================================
-
         if line_search == 'none':
             update = d.mul(lr)
             x = x + update
@@ -361,32 +326,24 @@ def _minimize_newton_exact(
         # ===================================
         #  Re-evaluate func/Jacobian/Hessian
         # ===================================
-
         f, g, _, hess = closure(x)
-        if tikhonov > 0:
-            hess.diagonal().add_(tikhonov)
+        if tikhonov > 0: hess.diagonal().add_(tikhonov)
 
-        if disp > 1:
-            print('iter %3d - fval: %0.4f - info: %d' % (n_iter, f, info))
-        if callback is not None:
-            callback(x)
-        if return_all:
-            allvecs.append(x)
+        if disp > 1: print('iter %3d - fval: %0.4f - info: %d' % (n_iter, f, info))
+        if callback is not None: callback(x)
+        if return_all: allvecs.append(x)
 
         # ==========================
         #  check for convergence
         # ==========================
-
         if update.norm(p=normp) <= xtol:
             warnflag = 0
             msg = _status_message['success']
             break
-
         if not f.isfinite():
             warnflag = 3
             msg = _status_message['nan']
             break
-
     else:
         # if we get to the end, the maximum num. iterations was reached
         warnflag = 1
@@ -401,6 +358,5 @@ def _minimize_newton_exact(
                             hess=hess.view(2 * x0.shape),
                             status=warnflag, success=(warnflag==0),
                             message=msg, nit=n_iter, nfev=sf.nfev, nfail=nfail)
-    if return_all:
-        result['allvecs'] = allvecs
+    if return_all: result['allvecs'] = allvecs
     return result

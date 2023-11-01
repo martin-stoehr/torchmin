@@ -45,8 +45,7 @@ def _minimize_cg(fun, x0, lr=1., max_iter=None, gtol=1e-5, normp=float('inf'),
 
     """
     disp = int(disp)
-    if max_iter is None:
-        max_iter = x0.numel() * 200
+    if max_iter is None: max_iter = x0.numel() * 200
 
     # Construct scalar objective function
     sf = ScalarFunction(fun, x_shape=x0.shape)
@@ -56,10 +55,8 @@ def _minimize_cg(fun, x0, lr=1., max_iter=None, gtol=1e-5, normp=float('inf'),
     # initialize
     x = x0.detach().flatten()
     f, g, _, _ = closure(x)
-    if disp > 1:
-        print('initial fval: %0.4f' % f)
-    if return_all:
-        allvecs = [x]
+    if disp > 1: print('initial fval: %0.4f' % f)
+    if return_all: allvecs = [x]
     d = g.neg()
     grad_norm = g.norm(p=normp)
     old_f = f + g.norm() / 2  # Sets the initial step guess to dx ~ lr
@@ -114,19 +111,14 @@ def _minimize_cg(fun, x0, lr=1., max_iter=None, gtol=1e-5, normp=float('inf'),
         else:
             d = polak_ribiere_powell_step(t, g)[1]
 
-        if disp > 1:
-            print('iter %3d - fval: %0.4f' % (niter, f))
-        if return_all:
-            allvecs.append(x)
-        if callback is not None:
-            callback(x)
-
+        if disp > 1: print('iter %3d - fval: %0.4f' % (niter, f))
+        if return_all: allvecs.append(x)
+        if callback is not None: callback(x)
         # check optimality
         if grad_norm <= gtol:
             warnflag = 0
             msg = _status_message['success']
             break
-
     else:
         # if we get to the end, the maximum iterations was reached
         warnflag = 1
@@ -141,6 +133,5 @@ def _minimize_cg(fun, x0, lr=1., max_iter=None, gtol=1e-5, normp=float('inf'),
     result = OptimizeResult(fun=f, x=x.view_as(x0), grad=g.view_as(x0),
                             status=warnflag, success=(warnflag == 0),
                             message=msg, nit=niter, nfev=sf.nfev)
-    if return_all:
-        result['allvecs'] = allvecs
+    if return_all: result['allvecs'] = allvecs
     return result

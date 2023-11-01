@@ -90,8 +90,8 @@ class CGSteihaugSubproblem(BaseQuadraticSubproblem):
         r = self.jac
         d = -r
 
-        # Search for the min of the approximation of the objective function.
-        while True:
+        print("Search for the min of the approximation of the objective function.")
+        while True: ## possible endless loop?
 
             # do an iteration
             Bd = self.hessp(d)
