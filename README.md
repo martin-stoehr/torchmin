@@ -7,7 +7,9 @@ It is inspired heavily by SciPy's `optimize` module and MATLAB's [Optimization T
 Unlike SciPy and MATLAB, which use numerical approximations of function derivatives, pytorch-minimize uses _real_ first- and second-order derivatives, computed seamlessly behind the scenes with autograd.
 Both CPU and CUDA are supported.
 
-__Author__: Reuben Feinman
+__Original author__: Reuben Feinman
+
+__This fork__: Added support for learning rate, handling of non-positive definite Hessians in Newton-CG, fixed potential memory leak in double backward for Hessian
 
 __At a glance:__
 
